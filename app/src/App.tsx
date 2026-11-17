@@ -21,9 +21,11 @@ import {
   Play,
   Plus,
   Repeat2,
+  RotateCw,
   SkipBack,
   SkipForward,
   Square,
+  SquarePlay,
   Trash2,
   Type,
   Undo2,
@@ -94,6 +96,8 @@ export default function App() {
   const [playbackShapes, setPlaybackShapes] = useState<Shape[] | null>(null)
   const [speed, setSpeed] = useState(1)
   const [loop, setLoop] = useState(false)
+  const [playSession, setPlaySession] = useState(0)
+  const [exportOpen, setExportOpen] = useState(false)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const boardRef = useRef(board)
   const draftRef = useRef<Shape | null>(null)
@@ -101,6 +105,7 @@ export default function App() {
   const activeFrameRef = useRef<string | null>(null)
   const playbackSegmentRef = useRef(0)
   const playbackProgressRef = useRef(0)
+  const playOnceRef = useRef(false)
   const animationFrameRef = useRef<number | null>(null)
   const animationLocked = isPlaying || playbackPlayers !== null
 
@@ -227,6 +232,44 @@ export default function App() {
     if (target) selectFrame(target.id)
   }
 
+  const playCurrentFrame = () => {
+    const frames = boardRef.current.frames
+    if (frames.length < 2) {
+      notify('至少需要 2 个关键帧才能播放动画')
+      return
+    }
+    const activeIndex = frames.findIndex((frame) => frame.id === activeFrameRef.current)
+    const segment = activeIndex >= 0 ? activeIndex : 0
+    if (segment >= frames.length - 1) {
+      notify('当前已是最后一帧，请先选择要播放的关键帧')
+      return
+    }
+    playOnceRef.current = true
+    playbackSegmentRef.current = segment
+    playbackProgressRef.current = 0
+    setPlaybackPlayers(clonePlayers(frames[segment].players))
+    setPlaybackShapes(cloneShapes(frames[segment].shapes))
+    setSelectedId(null)
+    setPlaySession((value) => value + 1)
+    setIsPlaying(true)
+  }
+
+  const replay = () => {
+    const frames = boardRef.current.frames
+    if (frames.length < 2) {
+      notify('至少需要 2 个关键帧才能播放动画')
+      return
+    }
+    playOnceRef.current = false
+    playbackSegmentRef.current = 0
+    playbackProgressRef.current = 0
+    setPlaybackPlayers(clonePlayers(frames[0].players))
+    setPlaybackShapes(cloneShapes(frames[0].shapes))
+    setSelectedId(null)
+    setPlaySession((value) => value + 1)
+    setIsPlaying(true)
+  }
+
   const togglePlayback = () => {
     if (isPlaying) {
       setIsPlaying(false)
@@ -241,6 +284,7 @@ export default function App() {
       setIsPlaying(true)
       return
     }
+    playOnceRef.current = false
     const activeIndex = frames.findIndex((frame) => frame.id === activeFrameRef.current)
     const segment = activeIndex >= 0 && activeIndex < frames.length - 1 ? activeIndex : 0
     playbackSegmentRef.current = segment
@@ -274,7 +318,7 @@ export default function App() {
         animationFrameRef.current = requestAnimationFrame(tick)
         return
       }
-      if (segment < frames.length - 2 || loop) {
+      if (!playOnceRef.current && (segment < frames.length - 2 || loop)) {
         segment = segment < frames.length - 2 ? segment + 1 : 0
         playbackSegmentRef.current = segment
         playbackProgressRef.current = 0
@@ -285,16 +329,17 @@ export default function App() {
         return
       }
 
-      const lastFrame = frames[frames.length - 1]
+      const endFrame = playOnceRef.current ? frames[segment + 1] : frames[frames.length - 1]
+      playOnceRef.current = false
       const next = {
         ...boardRef.current,
-        players: clonePlayers(lastFrame.players),
-        shapes: cloneShapes(lastFrame.shapes),
+        players: clonePlayers(endFrame.players),
+        shapes: cloneShapes(endFrame.shapes),
       }
-      activeFrameRef.current = lastFrame.id
+      activeFrameRef.current = endFrame.id
       boardRef.current = next
       setBoard(next)
-      setActiveFrameId(lastFrame.id)
+      setActiveFrameId(endFrame.id)
       setPlaybackPlayers(null)
       setPlaybackShapes(null)
       setIsPlaying(false)
@@ -306,7 +351,7 @@ export default function App() {
     return () => {
       if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isPlaying, speed, loop])
+  }, [isPlaying, speed, loop, playSession])
 
   useEffect(() => () => {
     if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current)
@@ -574,12 +619,17 @@ export default function App() {
     notify('已新建空白战术方案')
   }
 
-  const exportPng = () => {
+  const exportPng = (scope: 'canvas' | 'court') => {
+    setExportOpen(false)
     const sourceSvg = svgRef.current
     if (!sourceSvg) return
     notify('正在生成图片…')
     const clone = sourceSvg.cloneNode(true) as SVGSVGElement
-    const viewBox = (sourceSvg.getAttribute('viewBox') ?? '0 0 1000 560').split(/[\s,]+/).map(Number)
+    if (scope === 'court') {
+      const courtWidth = board.courtMode === 'full' ? 1000 : 560
+      clone.setAttribute('viewBox', `0 0 ${courtWidth} 560`)
+    }
+    const viewBox = (clone.getAttribute('viewBox') ?? '0 0 1000 560').split(/[\s,]+/).map(Number)
     const width = 2000
     const height = Math.round((width * viewBox[3]) / viewBox[2])
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
@@ -658,7 +708,17 @@ export default function App() {
         <aside className="side-rail" aria-label="方案工具">
           <button onClick={resetBoard} disabled={animationLocked} data-tooltip="新建方案" aria-label="新建方案"><FilePlus2 /></button>
           <button onClick={saveBoard} data-tooltip="保存到浏览器" aria-label="保存到浏览器"><Save /></button>
-          <button onClick={exportPng} data-tooltip="导出 PNG" aria-label="导出 PNG 图片"><Download /></button>
+          <div className="export-wrapper">
+            <button onClick={() => setExportOpen((value) => !value)} data-tooltip="导出 PNG" aria-label="导出 PNG 图片" aria-expanded={exportOpen}><Download /></button>
+            {exportOpen && <>
+              <div className="export-backdrop" onClick={() => setExportOpen(false)} />
+              <div className="export-menu" role="menu" aria-label="选择导出边界">
+                <span className="export-menu-title">导出边界</span>
+                <button role="menuitem" onClick={() => exportPng('canvas')}>完整画布<small>含界外约 3 米缓冲区</small></button>
+                <button role="menuitem" onClick={() => exportPng('court')}>仅球场区域<small>裁剪到球场边线以内</small></button>
+              </div>
+            </>}
+          </div>
           <span className="rail-divider" />
           <button className={board.courtMode === 'half' ? 'active' : ''} disabled={animationLocked} onClick={switchCourt} data-tooltip={board.courtMode === 'full' ? '切换半场' : '切换全场'} aria-label="切换全场或半场"><Grid2X2 /></button>
           <button onClick={() => commit((current) => ({ ...current, background: current.background === 'olive' ? 'midnight' : 'olive' }))} disabled={animationLocked} data-tooltip="切换背景" aria-label="切换背景颜色"><Palette /></button>
@@ -749,6 +809,8 @@ export default function App() {
             <div className="playback-controls">
               <button onClick={() => stepFrame(-1)} disabled={animationLocked || activeFrameIndex <= 0} aria-label="上一关键帧" title="上一关键帧"><SkipBack /></button>
               <button className="play-button" onClick={togglePlayback} disabled={board.frames.length < 2 && !isPlaying} aria-label={isPlaying ? '暂停动画' : playbackPlayers ? '继续播放' : '播放动画'} title="播放 / 暂停（空格）">{isPlaying ? <Pause /> : <Play />}</button>
+              <button onClick={playCurrentFrame} disabled={board.frames.length < 2} aria-label="仅播放当前帧" title="仅播放当前帧到下一帧"><SquarePlay /></button>
+              <button onClick={replay} disabled={board.frames.length < 2} aria-label="从头重播" title="从起始帧重播"><RotateCw /></button>
               <button onClick={stopPlayback} disabled={!animationLocked} aria-label="停止动画" title="停止并返回活动关键帧"><Square /></button>
               <button onClick={() => stepFrame(1)} disabled={animationLocked || activeFrameIndex >= board.frames.length - 1} aria-label="下一关键帧" title="下一关键帧"><SkipForward /></button>
               <button onClick={deleteActiveFrame} disabled={animationLocked || !board.frames.length} aria-label="删除当前关键帧" title="删除当前关键帧"><Trash2 /></button>

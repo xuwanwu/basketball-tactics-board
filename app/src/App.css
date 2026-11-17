@@ -1335,3 +1335,59 @@ kbd {
     gap: 6px;
   }
 }
+
+.export-wrapper {
+  position: relative;
+}
+
+.export-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+}
+
+.export-menu {
+  position: absolute;
+  left: 54px;
+  top: 0;
+  z-index: 50;
+  min-width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #20271e;
+  border: 1px solid rgba(241, 238, 220, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.export-menu-title {
+  padding: 4px 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #9aa28d;
+}
+
+.side-rail .export-menu button {
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 13px;
+  color: #f1eedf;
+}
+
+.side-rail .export-menu button small {
+  font-size: 11px;
+  color: #9aa28d;
+}
+
+.side-rail .export-menu button::after {
+  content: none;
+}
