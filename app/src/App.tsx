@@ -484,9 +484,14 @@ export default function App() {
   const editPlayer = (player: Player) => {
     const number = window.prompt('修改球员号码', player.number)
     if (number === null || !number.trim()) return
+    const next = number.trim().slice(0, 3)
+    if (board.players.some((item) => item.id !== player.id && item.kind === 'player' && item.color === player.color && item.number === next)) {
+      notify(`该队已有 ${next} 号球员，请换一个号码`)
+      return
+    }
     commit((current) => ({
       ...current,
-      players: current.players.map((item) => item.id === player.id ? { ...item, number: number.trim().slice(0, 3) } : item),
+      players: current.players.map((item) => item.id === player.id ? { ...item, number: next } : item),
     }))
   }
 
@@ -500,11 +505,15 @@ export default function App() {
       notify('已更改选中球员的颜色')
       return
     }
-    const count = board.players.filter((item) => item.color === color && item.kind === 'player').length
+    const sameColor = board.players.filter((item) => item.color === color && item.kind === 'player')
+    const usedNumbers = new Set(sameColor.map((item) => item.number))
+    let number = 1
+    while (usedNumbers.has(String(number))) number += 1
+    const count = sameColor.length
     const width = board.courtMode === 'full' ? 1000 : 560
     const newPlayer: Player = {
       id: `player-${Date.now()}`,
-      number: String(count + 1),
+      number: String(number),
       color,
       x: width / 2 + (count % 3) * 28,
       y: 250 + (count % 2) * 55,
@@ -570,9 +579,9 @@ export default function App() {
     if (!sourceSvg) return
     notify('正在生成图片…')
     const clone = sourceSvg.cloneNode(true) as SVGSVGElement
-    const full = board.courtMode === 'full'
+    const viewBox = (sourceSvg.getAttribute('viewBox') ?? '0 0 1000 560').split(/[\s,]+/).map(Number)
     const width = 2000
-    const height = full ? 1120 : 2000
+    const height = Math.round((width * viewBox[3]) / viewBox[2])
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
     clone.setAttribute('width', String(width))
     clone.setAttribute('height', String(height))

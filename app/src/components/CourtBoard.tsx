@@ -26,6 +26,8 @@ interface CourtBoardProps {
 
 const COURT = '#D19546'
 const LINES = '#f5f0dd'
+// 球场线外的可绘制缓冲区：1 米 ≈ 35 单位，约 3 米 = 105 单位（含原 10 单位边框，故此处为 95）
+const OOB = 95
 const geometryFor = (mode: BoardState['courtMode']): CourtGeometry => mode === 'full'
   ? { width: 1000, height: 560 }
   : { width: 560, height: 560 }
@@ -115,8 +117,8 @@ export default function CourtBoard({
     point.y = event.clientY
     const transformed = point.matrixTransform(svg.getScreenCTM()!.inverse())
     return {
-      x: Math.max(0, Math.min(geometry.width, transformed.x)),
-      y: Math.max(0, Math.min(geometry.height, transformed.y)),
+      x: Math.max(-OOB, Math.min(geometry.width + OOB, transformed.x)),
+      y: Math.max(-OOB, Math.min(geometry.height + OOB, transformed.y)),
     }
   }
 
@@ -221,13 +223,16 @@ export default function CourtBoard({
       const length = Math.hypot(dx, dy) || 1
       const nx = -dy / length
       const ny = dx / length
-      const waves = Math.max(2, Math.floor(length / 24))
+      const tail = Math.min(16, length / 3) // 终点前留一段沿主方向的直线，使箭头指向前进方向而非锯齿斜边
+      const usable = (length - tail) / length
+      const waves = Math.max(2, Math.floor((length * usable) / 24))
       let wavePath = `M ${start.x} ${start.y}`
       for (let i = 1; i <= waves * 2; i += 1) {
-        const t = i / (waves * 2)
+        const t = (i / (waves * 2)) * usable
         const amplitude = i === waves * 2 ? 0 : (i % 2 === 0 ? -9 : 9)
         wavePath += ` L ${start.x + dx * t + nx * amplitude} ${start.y + dy * t + ny * amplitude}`
       }
+      wavePath += ` L ${end.x} ${end.y}`
       element = <path d={wavePath} {...common} markerEnd={`url(#${markerId(shape.color)})`} />
     } else {
       element = <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} {...common}
@@ -256,7 +261,7 @@ export default function CourtBoard({
     <svg
       ref={svgRef}
       className={`court-svg tool-${tool} ${disabled ? 'is-playback' : ''}`}
-      viewBox={`0 0 ${geometry.width} ${geometry.height}`}
+      viewBox={`${-OOB} ${-OOB} ${geometry.width + OOB * 2} ${geometry.height + OOB * 2}`}
       role="img"
       aria-disabled={disabled}
       aria-label={half ? '篮球半场战术编辑区' : '篮球全场战术编辑区'}
@@ -272,6 +277,16 @@ export default function CourtBoard({
           </marker>
         ))}
       </defs>
+
+      <rect
+        x={-OOB}
+        y={-OOB}
+        width={geometry.width + OOB * 2}
+        height={geometry.height + OOB * 2}
+        rx="16"
+        fill="rgba(28, 33, 26, 0.34)"
+        pointerEvents="none"
+      />
 
       <g className="court-markings" fill="none" stroke={LINES} strokeWidth="4">
         <rect x="10" y="10" width={geometry.width - 20} height="540" fill={COURT} strokeWidth="6" />
