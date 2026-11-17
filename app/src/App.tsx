@@ -119,15 +119,34 @@ export default function App() {
 
   const syncActiveFrame = (state: BoardState): BoardState => {
     const frameId = activeFrameRef.current
-    if (!frameId || !state.frames.some((frame) => frame.id === frameId)) return state
-    return {
-      ...state,
-      frames: state.frames.map((frame) => frame.id === frameId ? {
-        ...frame,
-        players: clonePlayers(state.players),
-        shapes: cloneShapes(state.shapes),
-      } : frame),
+    const frameIndex = state.frames.findIndex((frame) => frame.id === frameId)
+    if (frameIndex < 0) return state
+    const frames = [...state.frames]
+    frames[frameIndex] = {
+      ...frames[frameIndex],
+      players: clonePlayers(state.players),
+      shapes: cloneShapes(state.shapes),
     }
+    // 参考 tactical-board.com 的级联规则：修改中间帧后向后传播，
+    // 后续帧中相对上一帧没有自主移动的球员跟随新位置，自己调整过的保留
+    let previousOld = state.frames[frameIndex].players
+    for (let k = frameIndex + 1; k < frames.length; k += 1) {
+      const currentOld = frames[k].players
+      const previousNew = frames[k - 1].players
+      let changed = false
+      const nextPlayers = currentOld.map((player) => {
+        const before = previousOld.find((item) => item.id === player.id)
+        const after = previousNew.find((item) => item.id === player.id)
+        if (!before || !after) return player
+        if (before.x === after.x && before.y === after.y) return player
+        if (player.x !== before.x || player.y !== before.y) return player
+        changed = true
+        return { ...player, x: after.x, y: after.y }
+      })
+      if (changed) frames[k] = { ...frames[k], players: nextPlayers }
+      previousOld = currentOld
+    }
+    return { ...state, frames }
   }
 
   const commit = (updater: (current: BoardState) => BoardState) => {
